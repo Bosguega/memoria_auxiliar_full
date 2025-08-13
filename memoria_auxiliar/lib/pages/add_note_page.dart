@@ -4,59 +4,101 @@ import '../services/real_embedder.dart';
 
 class AddNotePage extends StatefulWidget {
   final NotesService notesService;
-  final IEmbedder embedder;
+  final RealEmbedder embedder;
+  final Map<String, dynamic>? noteToEdit; // nota opcional para editar
 
-  const AddNotePage({required this.notesService, required this.embedder, super.key});
+  const AddNotePage({
+    required this.notesService,
+    required this.embedder,
+    this.noteToEdit,
+    super.key,
+  });
 
   @override
   State<AddNotePage> createState() => _AddNotePageState();
 }
 
 class _AddNotePageState extends State<AddNotePage> {
-  final _textController = TextEditingController();
+  late TextEditingController _controller;
   bool _isSaving = false;
 
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(
+      text: widget.noteToEdit != null ? widget.noteToEdit!['text'] : '',
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
   Future<void> _saveNote() async {
-    final text = _textController.text.trim();
+    final text = _controller.text.trim();
     if (text.isEmpty) return;
 
-    setState(() => _isSaving = true);
+    setState(() {
+      _isSaving = true;
+    });
 
     try {
-      final embedding = await widget.embedder.generate(text);
-      await widget.notesService.addNote(text, embedding);
-      if (mounted) Navigator.pop(context);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao salvar: $e')),
+      final embedding = await widget.embedder.embedText(text);
+
+      if (widget.noteToEdit != null) {
+        // Editando nota existente
+        await widget.notesService.updateNote(
+          widget.noteToEdit!['id'],
+          text,
+          embedding,
         );
+      } else {
+        // Criando nova nota
+        await widget.notesService.addNote(text, embedding);
       }
-    } finally {
-      if (mounted) setState(() => _isSaving = false);
+
+      if (mounted) {
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      setState(() {
+        _isSaving = false;
+      });
+      // Aqui você pode mostrar um alerta de erro se quiser
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Adicionar Nota')),
+      appBar: AppBar(
+        title: Text(widget.noteToEdit != null ? 'Editar Nota' : 'Nova Nota'),
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            TextField(
-              controller: _textController,
-              decoration: const InputDecoration(
-                labelText: 'Texto da nota',
-                border: OutlineInputBorder(),
+            Expanded(
+              child: TextField(
+                controller: _controller,
+                maxLines: null,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  hintText: 'Digite sua anotação aqui...',
+                  border: OutlineInputBorder(),
+                ),
               ),
-              maxLines: 5,
             ),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _isSaving ? null : _saveNote,
-              child: _isSaving ? const CircularProgressIndicator() : const Text('Salvar'),
+              child: _isSaving
+                  ? const CircularProgressIndicator(
+                      color: Colors.white,
+                    )
+                  : const Text('Salvar'),
             ),
           ],
         ),

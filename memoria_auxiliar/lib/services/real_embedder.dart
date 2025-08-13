@@ -1,30 +1,21 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
+class RealEmbedder {
+  final String _url = 'http://127.0.0.1:5000/embed'; // URL do seu servidor Flask
 
-class RealEmbedder implements IEmbedder {
-  final String serverUrl;
-
-  RealEmbedder({this.serverUrl = 'http://127.0.0.1:5000/embed'});
-
-  @override
-  Future<List<double>> generate(String text) async {
+  Future<List<double>> embedText(String text) async {
     final response = await http.post(
-      Uri.parse(serverUrl),
+      Uri.parse(_url),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'texts': [text]}),
     );
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      final embeddings = data['embeddings'] as List;
-      return List<double>.from(embeddings[0]);
+      return List<double>.from(data['embeddings'][0]);
     } else {
-      throw Exception('Falha ao gerar embedding');
+      throw Exception('Falha ao obter embedding: ${response.statusCode}');
     }
   }
-}
-
-abstract class IEmbedder {
-  Future<List<double>> generate(String text);
 }

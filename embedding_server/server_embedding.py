@@ -6,8 +6,11 @@ model = SentenceTransformer('all-MiniLM-L6-v2')  # Modelo leve, rápido e eficaz
 
 @app.route('/embed', methods=['POST'])
 def embed():
+    print("Recebido raw data:", request.data)  # Dados brutos recebidos (bytes)
     data = request.json
-    texts = data.get('texts', [])
+    print("JSON decodificado:", data)
+    
+    texts = data.get('texts', []) if data else None
     if not texts:
         return jsonify({'error': 'No texts provided'}), 400
 
@@ -15,4 +18,4 @@ def embed():
     return jsonify({'embeddings': embeddings})
 
 if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=5000)
+    app.run(host='127.0.0.1', port=5000, debug=True)
