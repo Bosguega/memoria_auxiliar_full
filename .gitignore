@@ -1,0 +1,34 @@
+# Flutter/Dart
+memoria_auxiliar/.dart_tool/
+memoria_auxiliar/.packages
+memoria_auxiliar/.pub-cache/
+memoria_auxiliar/build/
+memoria_auxiliar/.flutter-plugins
+memoria_auxiliar/.flutter-plugins-dependencies
+memoria_auxiliar/.metadata
+memoria_auxiliar/.idea/
+memoria_auxiliar/.vscode/
+memoria_auxiliar/android/.gradle/
+memoria_auxiliar/ios/Pods/
+memoria_auxiliar/*.iml
+memoria_auxiliar/*.lock
+memoria_auxiliar/pubspec.lock
+
+# Python
+embedding_server/__pycache__/
+embedding_server/*.py[cod]
+embedding_server/*.pyo
+embedding_server/*.pyd
+embedding_server/env/
+embedding_server/venv/
+embedding_server/ENV/
+embedding_server/env.bak/
+embedding_server/venv.bak/
+embedding_server/*.sqlite3
+embedding_server/*.log
+embedding_server/*.pot
+embedding_server/*.mo
+
+# Editor configs
+.vscode/
+.idea/
