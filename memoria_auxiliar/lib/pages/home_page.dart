@@ -1,23 +1,28 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import '../services/notes_service.dart';
 import '../services/real_embedder.dart';
-import 'add_note_page.dart';
 
 class HomePage extends StatefulWidget {
   final NotesService notesService;
-  final IEmbedder embedder;
+  final RealEmbedder embedder;
 
-  const HomePage({required this.notesService, required this.embedder, super.key});
+  const HomePage({
+    required this.notesService,
+    required this.embedder,
+    super.key,
+  });
 
   @override
   State<HomePage> createState() => _HomePageState();
 }
 
 class _HomePageState extends State<HomePage> {
-  List<Map<String, dynamic>> _allNotes = [];
-  List<Map<String, dynamic>> _filteredNotes = [];
-  final _searchController = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
+
+  List<Note> _notes = [];
+  List<Note> _filteredNotes = [];
+
+  String _statusText = 'Pronto';
 
   @override
   void initState() {
@@ -26,110 +31,172 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _loadNotes() async {
-    final notes = await widget.notesService.getNotes();
+    final notes = await widget.notesService.getAllNotes();
     setState(() {
-      _allNotes = notes;
-      _filteredNotes = notes;
+      _notes = notes;
+      _filteredNotes = List.from(notes);
+      _statusText = 'Encontradas ${notes.length} memórias';
     });
   }
 
-  double _cosineSimilarity(List<double> a, List<double> b) {
-    double dot = 0, magA = 0, magB = 0;
-    for (int i = 0; i < a.length; i++) {
-      dot += a[i] * b[i];
-      magA += a[i] * a[i];
-      magB += b[i] * b[i];
-    }
-    return dot / (sqrt(magA) * sqrt(magB));
-  }
-
-  Future<void> _searchNotes(String query) async {
-    if (query.trim().isEmpty) {
-      setState(() => _filteredNotes = List.from(_allNotes));
-      return;
-    }
-
-    final queryEmbedding = await widget.embedder.generate(query);
-    final filtered = _allNotes.where((note) {
-      final emb = List<double>.from(note['embedding'] ?? []);
-      if (emb.isEmpty) return false;
-      final sim = _cosineSimilarity(queryEmbedding, emb);
-      return sim > 0.6;
-    }).toList();
-
-    filtered.sort((a, b) {
-      final embA = List<double>.from(a['embedding']);
-      final embB = List<double>.from(b['embedding']);
-      final simA = _cosineSimilarity(queryEmbedding, embA);
-      final simB = _cosineSimilarity(queryEmbedding, embB);
-      return simB.compareTo(simA);
+  void _filterNotes(String query) {
+    final filtered = _notes
+        .where((note) => note.text.toLowerCase().contains(query.toLowerCase()))
+        .toList();
+    setState(() {
+      _filteredNotes = filtered;
+      _statusText = 'Encontradas ${filtered.length} memórias';
     });
-
-    setState(() => _filteredNotes = filtered);
   }
 
-  Future<void> _deleteNote(String id) async {
-    await widget.notesService.deleteNote(id);
-    await _loadNotes();
-  }
+  Future<void> _showNoteDialog({Note? note}) async {
+    final TextEditingController controller =
+        TextEditingController(text: note?.text ?? '');
 
-  void _goToAddNote() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => AddNotePage(notesService: widget.notesService, embedder: widget.embedder),
-      ),
-    ).then((_) => _loadNotes());
-  }
+    final isNew = note == null;
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Memória Auxiliar'),
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(isNew ? 'Criar Nota' : 'Editar Nota'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLines: null,
+          decoration: const InputDecoration(hintText: 'Digite a nota aqui'),
+        ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: _goToAddNote,
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: TextField(
-              controller: _searchController,
-              decoration: const InputDecoration(
-                labelText: 'Pesquisar notas',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.search),
-              ),
-              onChanged: _searchNotes,
-            ),
-          ),
-          Expanded(
-            child: ListView.builder(
-              itemCount: _filteredNotes.length,
-              itemBuilder: (_, i) {
-                final note = _filteredNotes[i];
-                return ListTile(
-                  title: Text(note['text']),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete),
-                    onPressed: () => _deleteNote(note['id']),
-                  ),
-                );
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar')),
+          ElevatedButton(
+              onPressed: () {
+                final text = controller.text.trim();
+                if (text.isEmpty) return;
+                Navigator.pop(context, text);
               },
-            ),
-          ),
+              child: const Text('Salvar')),
         ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _goToAddNote,
-        child: const Icon(Icons.add),
-        tooltip: 'Adicionar Nota',
       ),
     );
+
+    if (result != null) {
+      if (isNew) {
+        await widget.notesService.addNote(result, []);
+      } else {
+        await widget.notesService.updateNote(note.id, result);
+      }
+      await _loadNotes();
+      _filterNotes(_searchController.text);
+    }
   }
+
+  Future<void> _confirmDelete(Note note) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirmar exclusão'),
+        content: Text('Deseja excluir a nota “${note.text}”?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Excluir')),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await widget.notesService.deleteNote(note.id);
+      await _loadNotes();
+      _filterNotes(_searchController.text);
+    }
+  }
+
+@override
+Widget build(BuildContext context) {
+  return Scaffold(
+    appBar: AppBar(
+      title: const Text('Anotações com Memórias'),
+    ),
+    body: Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: TextField(
+            controller: _searchController,
+            decoration: const InputDecoration(
+              labelText: 'Pesquisar memórias',
+              border: OutlineInputBorder(),
+              prefixIcon: Icon(Icons.search),
+            ),
+            onChanged: _filterNotes,
+          ),
+        ),
+        Expanded(
+          child: _searchController.text.isEmpty
+              ? Center(
+                  child: Text(
+                    'Digite algo para pesquisar...',
+                    style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                  ),
+                )
+              : ListView.builder(
+                  itemCount: _filteredNotes.length,
+                  itemBuilder: (context, index) {
+                    final note = _filteredNotes[index];
+                    return Card(
+                      margin: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      elevation: 3,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                      child: ListTile(
+                        title: Text('Memória #${index + 1}',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 16)),
+                        subtitle: Padding(
+                          padding: const EdgeInsets.only(top: 6.0),
+                          child: Text(note.text,
+                              style: const TextStyle(fontSize: 14)),
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon:
+                                  const Icon(Icons.edit, color: Colors.blue),
+                              onPressed: () => _showNoteDialog(note: note),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete, color: Colors.red),
+                              onPressed: () => _confirmDelete(note),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    ),
+    bottomNavigationBar: BottomAppBar(
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Text(
+          _statusText,
+          style: const TextStyle(fontSize: 16),
+        ),
+      ),
+    ),
+    floatingActionButton: FloatingActionButton(
+      onPressed: () => _showNoteDialog(),
+      child: const Icon(Icons.add),
+    ),
+    floatingActionButtonLocation: FloatingActionButtonLocation.endDocked,
+  );
+}
 }
